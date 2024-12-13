@@ -12,63 +12,73 @@ class PokemonApp extends StatelessWidget {
     return MaterialApp(
       title: 'Pokémon API',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: PokemonList(),
+      home: PokemonSearch(),
     );
   }
 }
 
-class PokemonList extends StatefulWidget {
+class PokemonSearch extends StatefulWidget {
   @override
-  _PokemonListState createState() => _PokemonListState();
+  _PokemonSearchState createState() => _PokemonSearchState();
 }
 
-class _PokemonListState extends State<PokemonList> {
-  List<Map<String, dynamic>> _pokemonList = [];
+class _PokemonSearchState extends State<PokemonSearch> {
+  TextEditingController _controller = TextEditingController();
+  Map<String, dynamic> _pokemonDetails = {};
   bool _isLoading = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-    fetchPokemon();
   }
 
-  Future<void> fetchPokemon() async {
+  Future<void> fetchPokemon(String query) async {
     setState(() {
       _isLoading = true;
+      _errorMessage = '';
     });
 
-    final url = Uri.parse('https://pokeapi.co/api/v2/pokemon?limit=50');
+    final url = Uri.parse('https://pokeapi.co/api/v2/pokemon/$query');
     try {
       final response = await http.get(url);
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final List results = data['results'];
-
-        List<Map<String, dynamic>> pokemonWithImages = [];
-
-        for (var pokemon in results) {
-          final detailsResponse = await http.get(Uri.parse(pokemon['url']));
-          if (detailsResponse.statusCode == 200) {
-            final detailsData = json.decode(detailsResponse.body);
-            pokemonWithImages.add({
-              'name': pokemon['name'],
-              'image': detailsData['sprites']['front_default'],
-            });
-          }
-        }
-
         setState(() {
-          _pokemonList = pokemonWithImages;
-          _isLoading = false;
+          _pokemonDetails = {
+            'name': data['name'],
+            'image': data['sprites']['front_default'],
+            'types': data['types'].map((type) => type['type']['name']).toList(),
+            'height': data['height'],
+            'weight': data['weight'],
+            'abilities': data['abilities']
+                .map((ability) => ability['ability']['name'])
+                .toList(),
+            'stats': data['stats']
+                .map((stat) =>
+                    '${stat['stat']['name']}: ${stat['base_stat']}')
+                .toList(),
+            'moves': data['moves']
+                 
+                .map((move) => move['move']['name'])
+                .toList(),
+          };
         });
       } else {
-        throw Exception('Error al cargar los Pokémon.');
+        setState(() {
+          _errorMessage = 'No se encontró el Pokémon ingresado.';
+        });
       }
     } catch (e) {
       setState(() {
-        _isLoading = false;
+        _errorMessage = 'Error cargando la información del Pokémon.';
       });
       print('Error: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -76,22 +86,91 @@ class _PokemonListState extends State<PokemonList> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Lista de Pokémon'),
+        title: Text('Buscador de Pokémon'),
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _pokemonList.length,
-              itemBuilder: (context, index) {
-                final pokemon = _pokemonList[index];
-                return ListTile(
-                  leading: pokemon['image'] != null
-                      ? Image.network(pokemon['image'])
-                      : Icon(Icons.image_not_supported),
-                  title: Text(pokemon['name']),
-                );
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                labelText: 'Busca  Pokémon por ID o nombre',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (value) {
+                fetchPokemon(value.toLowerCase());
               },
             ),
+            SizedBox(height: 20),
+
+
+            _isLoading
+                ? CircularProgressIndicator()
+                : _errorMessage.isNotEmpty
+                    ? Text(_errorMessage, style: TextStyle(color: Colors.red))
+                    : Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: [
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Image.network(_pokemonDetails['image'] ?? '')
+                                  : Container(),
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Text(
+                                      _pokemonDetails['name'] ?? '',
+                                      style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                                    )
+                                  : Container(),
+
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Text('Types : ${_pokemonDetails['types'].join(', ')}')
+                                  : Container(),
+
+      
+                              _pokemonDetails.isNotEmpty
+                                  ? Text('Height: ${_pokemonDetails['height']} ')
+                                  : Container(),
+                              _pokemonDetails.isNotEmpty
+                                  ? Text('Weight: ${_pokemonDetails['weight']} ')
+                                  : Container(),
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Text('Abilities: ${_pokemonDetails['abilities'].join(', ')}')
+                                  : Container(),
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: 
+                                      _pokemonDetails['stats']
+                                          .map<Widget>((stat) => Text(stat))
+                                          .toList(),
+                                    )
+                                  : Container(),
+
+                              _pokemonDetails.isNotEmpty
+                                  ? Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Movementss:'),
+                                        ..._pokemonDetails['moves']
+                                            .map<Widget>((move) => Text(move))
+                                            .toList(),
+                                      ],
+                                    )
+                                  : Container(),
+                            ],
+                          ),
+                        ),
+                      ),
+          ],
+        ),
+      ),
     );
   }
 }
